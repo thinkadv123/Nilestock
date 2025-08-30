@@ -1,5 +1,5 @@
 {
-  "name": "Shopify Inventory Sync",
+  "name": "NileStock Shopify Inventory Sync",
   "description": "An application to update Shopify inventory levels by matching SKUs with a warehouse inventory file. Users upload a warehouse file (Excel/CSV) and a Shopify export file, and the app generates an updated Shopify file with synchronized 'On hand' quantities.",
   "requestFramePermissions": []
 }

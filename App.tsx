@@ -96,7 +96,10 @@ export default function App() {
         </main>
         
         <footer className="text-center mt-8 text-sm text-slate-500 dark:text-slate-400">
-          <p>&copy; {new Date().getFullYear()} Shopify Inventory Sync. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} NileStock Shopify Inventory Sync. All rights reserved.</p>
+          <p className="mt-1">
+            Developed by <a href="http://www.thinkadv.com" target="_blank" rel="noopener noreferrer" className="text-sky-600 dark:text-sky-400 hover:underline">thinkadv</a>
+          </p>
         </footer>
       </div>
     </div>

@@ -1,5 +1,5 @@
 {
-  "name": "shopify-inventory-sync",
+  "name": "nilestock-shopify-inventory-sync",
   "private": true,
   "version": "0.0.0",
   "type": "module",
