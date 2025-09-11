@@ -1,4 +1,3 @@
-import { type WarehouseRow, type ShopifyRow } from '../types';
 
 declare const XLSX: any; // Using XLSX from CDN
 
@@ -12,7 +11,7 @@ const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
 };
 
 const findColumnName = (headers: string[], possibleNames: string[]): string | undefined => {
-    const lowerCaseHeaders = headers.map(h => h.toLowerCase().trim());
+    const lowerCaseHeaders = headers.map(h => String(h).toLowerCase().trim());
     for (const name of possibleNames) {
         const lowerCaseName = name.toLowerCase().trim();
         const index = lowerCaseHeaders.indexOf(lowerCaseName);
@@ -42,45 +41,60 @@ export const processAndDownloadFiles = async (warehouseFile: File, shopifyFile: 
     const warehouseSheetName = warehouseWorkbook.SheetNames[0];
     const shopifySheetName = shopifyWorkbook.SheetNames[0];
 
-    const warehouseData: any[] = XLSX.utils.sheet_to_json(warehouseWorkbook.Sheets[warehouseSheetName]);
-    const shopifyData: any[] = XLSX.utils.sheet_to_json(shopifyWorkbook.Sheets[shopifySheetName]);
+    const warehouseSheet = warehouseWorkbook.Sheets[warehouseSheetName];
+    const shopifySheet = shopifyWorkbook.Sheets[shopifySheetName];
+    
+    // Read Shopify data as an array of arrays to preserve structure and empty columns
+    const shopifyDataAsArrays: any[][] = XLSX.utils.sheet_to_json(shopifySheet, { header: 1, defval: null });
 
-    if (warehouseData.length === 0 || shopifyData.length === 0) {
-        throw new Error('One or both of the uploaded files are empty.');
+    if (shopifyDataAsArrays.length === 0) {
+        throw new Error('Shopify file is empty.');
     }
+    
+    // Extract headers and rows
+    const shopifyHeadersOriginal = shopifyDataAsArrays[0].map(h => h === null ? '' : String(h));
+    const headerLength = shopifyHeadersOriginal.length;
+    const shopifyRows = shopifyDataAsArrays.slice(1);
+    
+    const warehouseData: any[] = XLSX.utils.sheet_to_json(warehouseSheet);
 
-    // Find column names, allowing for case-insensitivity and whitespace
+    if (warehouseData.length === 0) {
+        throw new Error('The warehouse file is empty.');
+    }
+    
+    // Find column names for warehouse file
     const warehouseHeaders = Object.keys(warehouseData[0]);
-    const shopifyHeaders = Object.keys(shopifyData[0]);
-
     const itemNumCol = findColumnName(warehouseHeaders, ["Item Number", "item number", "item_number"]);
     const barcodeCol = findColumnName(warehouseHeaders, ["Barcode", "barcode"]);
     const availablePhysicalCol = findColumnName(warehouseHeaders, ["Available Physical", "available physical", "available_physical"]);
-    const skuCol = findColumnName(shopifyHeaders, ["Sku", "sku", "variant sku"]);
-    const onHandCol = findColumnName(shopifyHeaders, ["On hand", "on hand", "on_hand", "inventory quantity", "Variant Inventory Qty", "Inventory Available", "Available", "On hand (current)"]);
+
+    // Find column names and indices for Shopify file
+    const skuColName = findColumnName(shopifyHeadersOriginal, ["SKU", "Sku", "sku", "variant sku"]);
+    const onHandColName = findColumnName(shopifyHeadersOriginal, ["On hand (new)", "On hand", "on hand", "on_hand", "inventory quantity", "Variant Inventory Qty", "Inventory Available", "Available", "On hand (current)"]);
 
     // Validate columns
     if ((!itemNumCol && !barcodeCol) || !availablePhysicalCol) {
       throw new Error('Warehouse file must contain "Available Physical" and either "Item Number" or "Barcode" columns.');
     }
-    if (!skuCol || !onHandCol) {
-      throw new Error('Shopify file must contain "Sku" and "On hand" columns.');
+    if (!skuColName || !onHandColName) {
+      throw new Error('Shopify file must contain "SKU" and an inventory column like "On hand (new)" or "On hand".');
     }
+    
+    const skuColIndex = shopifyHeadersOriginal.indexOf(skuColName);
+    const onHandColIndex = shopifyHeadersOriginal.indexOf(onHandColName);
     
     // Create a lookup map for efficient matching
     const warehouseMap = new Map<string, number>();
-    for (const row of warehouseData as WarehouseRow[]) {
+    for (const row of warehouseData) {
         const available = row[availablePhysicalCol];
         let quantity = 0;
         if (available != null) {
-            // Robustly parse number: remove commas, handle non-numeric values
             const parsed = parseFloat(String(available).replace(/,/g, ''));
             if (!isNaN(parsed)) {
                 quantity = parsed;
             }
         }
 
-        // Add by Item Number if column exists
         if (itemNumCol) {
             const itemNumber = row[itemNumCol];
             const itemNumberStr = itemNumber != null ? String(itemNumber).trim() : '';
@@ -89,7 +103,6 @@ export const processAndDownloadFiles = async (warehouseFile: File, shopifyFile: 
             }
         }
 
-        // Add by Barcode if column exists
         if (barcodeCol) {
             const barcode = row[barcodeCol];
             const barcodeStr = barcode != null ? String(barcode).trim() : '';
@@ -99,16 +112,26 @@ export const processAndDownloadFiles = async (warehouseFile: File, shopifyFile: 
         }
     }
 
-    // Process Shopify data
+    // Process Shopify data by updating the inventory in the specific column index
     let matchCount = 0;
-    const updatedShopifyData = shopifyData.map((row: ShopifyRow) => {
-      const sku = row[skuCol];
-      const newRow = { ...row };
+    const updatedShopifyRows = shopifyRows.map((row: any[]) => {
+      // Create a new row array and pad it to ensure it has the same length as the header row.
+      // This prevents trailing empty columns from being dropped.
+      const newRow = [...row];
+      while (newRow.length < headerLength) {
+        newRow.push(null);
+      }
+      // Also truncate if a row is somehow longer than the header.
+      if (newRow.length > headerLength) {
+        newRow.length = headerLength;
+      }
+      
+      const sku = newRow[skuColIndex];
 
       if (sku != null) {
         const skuString = String(sku).trim();
         if (warehouseMap.has(skuString)) {
-          newRow[onHandCol] = warehouseMap.get(skuString);
+          newRow[onHandColIndex] = warehouseMap.get(skuString);
           matchCount++;
         }
       }
@@ -119,8 +142,11 @@ export const processAndDownloadFiles = async (warehouseFile: File, shopifyFile: 
         console.warn("No matches found between Shopify SKUs and Warehouse identifiers (Item Number/Barcode).");
     }
 
-    // Generate and download the new Excel file
-    const newWorksheet = XLSX.utils.json_to_sheet(updatedShopifyData);
+    // Combine original headers and updated rows
+    const finalDataForSheet = [shopifyHeadersOriginal, ...updatedShopifyRows];
+
+    // Generate the new Excel file from the array of arrays
+    const newWorksheet = XLSX.utils.aoa_to_sheet(finalDataForSheet);
     const newWorkbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, 'Updated Inventory');
 
