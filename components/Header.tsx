@@ -9,7 +9,7 @@ export const Header: React.FC = () => {
                 <SyncIcon className="h-10 w-10 text-sky-600 dark:text-sky-400" />
             </div>
             <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-900 dark:text-white">
-                NileStock Inventory Sync
+                Nile Stock Inventory Sync Tool
             </h1>
             <p className="mt-4 max-w-2xl mx-auto text-lg text-slate-600 dark:text-slate-400">
                 Effortlessly update your Shopify 'On hand' inventory from a warehouse stock file.

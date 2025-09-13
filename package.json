@@ -1,5 +1,5 @@
 {
-  "name": "nilestock-inventory-sync",
+  "name": "nile-stock-inventory-sync-tool",
   "private": true,
   "version": "0.0.0",
   "type": "module",
